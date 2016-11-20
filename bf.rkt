@@ -18,25 +18,30 @@
 ;;;   - Z
 
 ;;; Symbol [ListOf BFCommand] Number -> Number
-(define get-new-ptr (lambda (sym lobfc ptr)
-                      (local [(define ptr-new
-                                (cond [(equal? sym 'jf)
-                                       (indexof-first (list-tail lobfc ptr)
-                                                      'jb
-                                                      ptr)]
-                                      [(equal? sym 'jb)
-                                       (indexof-last (list-head lobfc ptr)
-                                                     'jf)]))]
-                        (begin (display sym) (display " caused moving from ") (display ptr) (display " to ") (display ptr-new) (display "\n") ptr-new))))
-
+(define (get-new-ptr sym tape index)
+  (local [(define (get-j-ptr sym tape index acc)
+            (local [(define opp-sym (if (equal? 'jb sym)
+                                        'jf
+                                        'jb))
+                    (define tape-dir (if (equal? 'jb sym)
+                                         sub1
+                                         add1))]
+              (cond [(and (symbol=? (list-ref tape index) opp-sym)
+                          (equal? acc 0))
+                     index]
+                    [(symbol=? (list-ref tape index) opp-sym)
+                     (get-j-ptr sym tape (tape-dir index) (sub1 acc))]
+                    [(symbol=? (list-ref tape index) sym)
+                     (get-j-ptr sym tape (tape-dir index) (add1 acc))]
+                    [else (get-j-ptr sym tape (tape-dir index) acc)])))]
+    (get-j-ptr sym tape index -1)))
+       
 (check-expect (get-new-ptr 'jf (list 'ib 'ib 'jf 'ib 'jb) 2)
               4)
 (check-expect (get-new-ptr 'jf (list 'ib 'ib 'jf 'ib 'jb) 0)
               4)
 (check-expect (get-new-ptr 'jb (list 'ib 'ib 'jf 'ib 'jb) 4)
               2)
-(check-expect (get-new-ptr 'jb (list 'ib 'ib 'jf 'jf 'ib 'jb) 4)
-              3)
 
 ;;; BFState [Number -> Number]
 (define apply-op-to-byte-at-ptr (lambda (bfstate func)
@@ -76,7 +81,7 @@
                                           bfstate)
                                    (integer->char (list-ref (bf-tape bfstate) (bf-ptr bfstate))))]
                             [(equal? 'in command)
-                             (list (apply-op-to-byte-at-ptr bfstate (lambda (x) (read)))
+                             (list (apply-op-to-byte-at-ptr bfstate (lambda (x) (string->int (symbol->string (read)))))
                                    "")]
                             [(equal? 'jf command)
                              (if (equal? (list-ref (bf-tape bfstate) (bf-ptr bfstate))
@@ -156,39 +161,6 @@
 ;;; String -> [ListOf BFCommand]
 (define convert (lambda (bfstr)
                   (map convert-char (explode bfstr))))
-
-
-;;; [ListOf X] Number -> [ListOf X]
-(define list-tail (lambda (lox num)
-                    (cond [(equal? num 0) lox]
-                          [else (list-tail (rest lox) (sub1 num))])))
-
-(check-expect (list-tail (list 1 2 3) 2) (list 3))
-
-;;; [ListOf X] Number -> [ListOf X]
-(define list-head (lambda (lox num)
-                    (cond [(equal? num 0) empty]
-                          [else (cons (first lox) (list-head (rest lox)
-                                                             (sub1 num)))])))
-
-(check-expect (list-head (list 1 2 3) 2) (list 1 2))
-
-;;; [ListOF X] X -> Number
-(define indexof-last (lambda (lox x)
-                       (sub1 (- (length lox) (indexof-first (reverse lox) x 0)))))
-
-(check-expect (indexof-last (list "a" "b" "c" "a") "a") 3)
-(check-expect (indexof-last (list "a" "b" "c") "a") 0)
-
-;;; [ListOF X] X -> Number
-(define indexof-first (lambda (lox x acc)
-                        (cond [(empty? lox) (error 'indexof "Given empty list")]
-                              [(empty? (first lox)) (error 'indexof "Couldn't find element " x " in the list.")]
-                              [(equal? (first lox) x) acc]
-                              [else (indexof-first (rest lox) x (add1 acc))])))
-
-(check-expect (indexof-first (list 'a 'b 'c 'd 'a) 'a 0) 0)
-(check-expect (indexof-first (list 'a 'b 'c 'd) 'd 0) 3)
 
 ;;; String -> BFState
 (define run (lambda (str)
