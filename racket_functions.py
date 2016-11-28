@@ -47,21 +47,21 @@ def racket_struct_huh(nt):
     return lambda int: isinstance(int, nt)
 
 def racket_map(function, list):
-    return [racython.apply(function,[x]) for x in list]
+    return [racython.apply(function,[x])[0] for x in list]
 
 def racket_filter(function, lst):
-    return list(filter(lambda x: racython.apply(function, [x]), lst))
+    return list(filter(lambda x: racython.apply(function, [x])[0], lst))
 
 def racket_integerToChar(int):
     return chr(int)
 
 def racket_foldl(function, base, lst):
-    return reduce(lambda x,acc: racython.apply(function, [x, acc]), lst, base)
+    return reduce(lambda x,acc: racython.apply(function, [x, acc])[0], lst, base)
 
 def racket_foldr(function, base, lst):
     acc = base
     for elem in lst[::-1]:
-        acc = racython.apply(function, [elem, acc])
+        acc = racython.apply(function, [elem, acc])[0]
     return acc
 
 def racket_andmap(function, lst):
@@ -100,7 +100,7 @@ def racket_explode(str):
     return list(str)
 
 def racket_buildList(num, func):
-    return [racython.apply(func, [x]) for x in range(num)]
+    return [racython.apply(func, [x])[0] for x in range(num)]
 
 def racket_length(list):
     return len(list)
@@ -109,10 +109,10 @@ def racket_listRef(list, num):
     return list[num]
 
 def racket_add1(num):
-    return num+1
+    return num + 1
 
 def racket_sub1(num):
-    return num-1
+    return num - 1
 
 def racket_modulo(num1, num2):
-    return num1%num2
+    return num1 % num2

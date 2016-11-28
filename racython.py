@@ -90,47 +90,46 @@ class check_expect_error(Exception):
     pass
 
 def eval(rexp, env):
-    """ Rexp Environment -> Value
+    """ Rexp Environment -> Value Environment
         Recursively evaluates the given Rexp in the given environment"""
     # If it is a number, then return that
     if isinstance(rexp, (int, float)):
-        return rexp
+        return rexp, env
     # If it is a string then it is either a variable or a string
     if isinstance(rexp, str):
         try:
             # If it is variable, return the value of the variable
-            return env[rexp]
+            return env[rexp], env
         except KeyError as e:
             # If not, check whether it starts and ends with "
             if rexp[0] == "\"" and rexp[-1] == "\"":
                 # If it does, then it is a string
-                return rexp[1:-1]
+                return rexp[1:-1], env
             # Otherwise, raise an exception
             raise e
     # If it is quote, just return the sexpr (aka the rest of it)
     if rexp[0] == 'quote':
-        return rexp[1:]
+        return rexp[1:], env
     # If it is if, then use Python's if to determine which part to run
     if rexp[0] == 'if':
-        if eval(rexp[1], env):
+        if eval(rexp[1], env)[0]:
             return eval(rexp[2], env)
         else:
             return eval(rexp[3], env)
     # If it is cond, go through each arm until one returns true, then eval that Rexp
     if rexp[0] == 'cond':
-        print(rexp)
         condArms = rexp[1:]
         for arm in condArms:
             if arm[0] == "else":
                 return eval(arm[1], env)
-            elif eval(arm[0], env):
+            elif eval(arm[0], env)[0]:
                 return eval(arm[1], env)
         # If it hasn't returned anything, no part of the cond executed
         raise RacythonException("Fell through to the end of the cond.")
     # If it is lambda, create a closure with the parameters, body, and env
     if rexp[0] == 'lambda':
         # deepcopy the env so that scoping rules work properly
-        return closure(rexp[1], rexp[2], env)
+        return closure(rexp[1], rexp[2], env), env
     # If it is a struct, then create the make-struct, struct-param, and struct? functions
     if rexp[0] == 'define-struct':
         # nt is the named tuple that is our internal representation of a struct
@@ -143,37 +142,38 @@ def eval(rexp, env):
         # Create the struct? function
         env[rexp[1]+"?"] = racket_functions.racket_struct_huh(nt)
         # define-struct returns None
-        return None
+        return None, env
     # If it is local, create a new environment then execute it
     if rexp[0] == 'local':
         localDefines = rexp[1]
+        lEnv = deepcopy(env)
         for localDefine in localDefines:
-            eval(localDefine, env)
-        return eval(rexp[2], env)
+            eval(localDefine, lEnv)[0]
+        return eval(rexp[2], lEnv)
     # If it is a require statement, open that file and execute it
     if rexp[0] == 'require':
         with open("/usr/share/racket/pkgs/htdp-lib/"+rexp[1]+".rkt") as f:
             file = f.read()
         runFile(file)
         # require returns None
-        return
+        return None, env
     # If it is a define, add it to the env
     if rexp[0] == 'define':
-        env[rexp[1]] = eval(rexp[2], env)
+        env[rexp[1]] = eval(rexp[2], env)[0]
         # define returns None
-        return None
+        return None, env
     # If it is none of those, then it is a function application (aka (Rexp Rexp ...))
     else:
         # Get the function that is being called
         # deepcopy to ensure scoping rules work properly
-        functionValue = eval(rexp[0], env)
+        functionValue = eval(rexp[0], env)[0]
         # Eval each of the arguments to the function
-        argsValue = [eval(a, env) for a in rexp[1:]]
+        argsValue = [eval(a, env)[0] for a in rexp[1:]]
         # Apply the function to the arguments
-        return apply(functionValue, argsValue)
+        return apply(functionValue, argsValue, env=env)
 
-def apply(function, args):
-    """ RExp [ListOf Rexp] -> Value
+def apply(function, args, env=topLevelEnv):
+    """ RExp [ListOf Rexp] Environment -> Value
         Applies the given function to the given args"""
     # If it is a closure, then it is a user defined function. Thus, eval it in a new environment containing
     # the parameters to the function.
@@ -182,12 +182,13 @@ def apply(function, args):
         fBody = function.body
         # deepcopy to ensure scoping rules work properly
         fEnv = deepcopy(function.env)
+        fullEnv = {**fEnv, **deepcopy(env)}
         for param,arg in zip(fParams, args):
-            fEnv[param] = arg
-        return eval(fBody, fEnv)
+            fullEnv[param] = arg
+        return eval(fBody, fullEnv)
     # If it is a PythOp, just apply the function
     else:
-        return function(*args)
+        return function(*args), env
 
 def parseAtom(strRexp):
     """ String -> Value
@@ -225,20 +226,26 @@ def parseRExpr(strRexpr):
     sexpr = loads(strRexpr)
     return reformat(sexpr)
 
-def runRexp(strRexp):
+def runRexp(strRexp, env=topLevelEnv, returnEnv=False):
     """ String -> Value
         Executes the given single function call racket program"""
     strRexp = strRexp
     rexp = parseRExpr(strRexp)
-    return eval(rexp, topLevelEnv)
+    if returnEnv:
+        return eval(rexp, env)
+    else:
+        return eval(rexp, env)[0]
 
 def runFile(file):
     """ String -> Value
         Runs he given multi function call racket program. """
+    file = '\n'.join(stripComments(file.splitlines()))
     rexpList = SExprTokenizer().tokenize(file)
     output = []
+    env = topLevelEnv
     for rexp in rexpList:
-        output.append(runRexp(rexp))
+        out, env = runRexp(rexp, env=env, returnEnv=True)
+        output.append(out)
         print(output[-1])
     return output
 
