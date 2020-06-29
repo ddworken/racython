@@ -298,4 +298,4 @@ def getEnv():
 
 if __name__ == "__main__":
     while True:
-        eval(input("> "))
+        runFile(input("> "))
